@@ -43,45 +43,41 @@ public class HttpVerticle extends AbstractVerticle {
   }
 
   private void logout(RoutingContext routingContext) {
-    String token = routingContext.request().getHeader("Authorization").substring(7);
 
-    JsonObject message = new JsonObject()
-      .put("action", "delete-token")
-      .put("token", token);
-
-    vertx.eventBus().request("token-address", message, ar -> {
-      if (ar.succeeded()) {
-        routingContext.response()
-          .headers().remove("Authorization");
-        routingContext.response()
-          .setStatusCode(204)
-          .setStatusMessage("logout successfull")
-          .end();
-      } else {
-        System.out.println("token not found or expired");
-      }
-    });
+    routingContext.response()
+      .headers().remove("Authorization");
+    routingContext.response()
+      .setStatusCode(204)
+      .setStatusMessage("logout successfull")
+      .end();
   }
 
   private void getUserItems(RoutingContext routingContext) {
-    String token = routingContext.request().getHeader("Authorization").substring(7);
 
-    JsonObject message = new JsonObject()
-      .put("action", "get-user-items")
-      .put("token", token);
+    jwtAuth.authenticate(new JsonObject()
+      .put("jwt", routingContext.request().getHeader("Authorization").substring(7))
+      .put("options", new JsonObject()), res -> {
+      if (res.succeeded()) {
+        String ownerId = res.result().principal().getString("_id");
 
-    vertx.eventBus().request("persistence-address", message, ar -> {
+        JsonObject message = new JsonObject()
+          .put("action", "get-user-items")
+          .put("owner", ownerId);
 
-      if (ar.succeeded()) {
-        routingContext.response()
-          .setStatusCode(200)
-          .putHeader("Content-Type", "application/json; charset=utf-8")
-          .end(Json.encodePrettily(ar.result().body()));
-      } else {
-        routingContext.response()
-          .setStatusCode(401)
-          .setStatusMessage("You have not provided an authentication token, the one provided has expired, was revoked or is not authentic.")
-          .end();
+        vertx.eventBus().request("persistence-address", message, ar -> {
+
+          if (ar.succeeded()) {
+            routingContext.response()
+              .setStatusCode(200)
+              .putHeader("Content-Type", "application/json; charset=utf-8")
+              .end(Json.encodePrettily(ar.result().body()));
+          } else {
+            routingContext.response()
+              .setStatusCode(401)
+              .setStatusMessage("You have not provided an authentication token, the one provided has expired, was revoked or is not authentic.")
+              .end();
+          }
+        });
       }
     });
   }
@@ -100,34 +96,18 @@ public class HttpVerticle extends AbstractVerticle {
       if (ar.succeeded() && parsedMessage.getString("passwordInformation").equals("The password matches.")) {
 
         String token = jwtAuth.generateToken(new JsonObject()
-            .put("_id", routingContext.getBodyAsJson().getString("_id"))
-          , new JWTOptions().setIgnoreExpiration(true));
-
-        JsonObject tokenObj = new JsonObject()
-          .put("token", token)
-          .put("_id", parsedMessage.getString("_id"))
-          .put("expired", "false");
-        addTokenToDb(tokenObj);
+            .put("_id", JsonObject.mapFrom(ar.result().body()).getString("_id"))
+          , new JWTOptions().setExpiresInMinutes(1));
 
         routingContext.response()
           .setStatusCode(200)
           .putHeader("Content-Type", "application/json; charset=utf-8")
           .end(Json.encodePrettily(token));
-      }
-    });
-  }
-
-  private void addTokenToDb(JsonObject tokenObj) {
-
-    JsonObject message = new JsonObject()
-      .put("action", "save-token")
-      .put("tokenObj", tokenObj);
-
-    vertx.eventBus().request("token-address", message, ar -> {
-      if (ar.succeeded()) {
-        System.out.println("added token");
       } else {
-        System.out.println("cannot add token");
+        routingContext.response()
+          .setStatusCode(401)
+          .setStatusMessage("Wrong login or password.")
+          .end();
       }
     });
   }
@@ -152,30 +132,36 @@ public class HttpVerticle extends AbstractVerticle {
   }
 
   private void addItem(RoutingContext routingContext) {
-    String token = routingContext.request().getHeader("Authorization").substring(7);
 
-    JsonObject item = routingContext.getBodyAsJson()
-      .put("_id", UUID.randomUUID().toString());
+    jwtAuth.authenticate(new JsonObject()
+      .put("jwt", routingContext.request().getHeader("Authorization").substring(7))
+      .put("options", new JsonObject()), res -> {
+      if (res.succeeded()) {
+        String ownerId = res.result().principal().getString("_id");
 
-    JsonObject message = new JsonObject()
-      .put("action", "add-user-item")
-      .put("token", token)
-      .put("item", item);
+        JsonObject item = routingContext.getBodyAsJson()
+          .put("_id", UUID.randomUUID().toString())
+          .put("owner", ownerId);
 
-    vertx.eventBus().request("persistence-address", message, ar -> {
+        JsonObject message = new JsonObject()
+          .put("action", "add-user-item")
+          .put("item", item);
 
-      if (ar.succeeded()) {
-        routingContext.response()
-          .setStatusCode(204)
-          .setStatusMessage("Item created successfull.")
-          .end();
-      } else {
-        routingContext.response()
-          .setStatusCode(401)
-          .setStatusMessage("You have not provided an authentication token, the one provided has expired, was revoked or is not authentic.")
-          .end();
+        vertx.eventBus().request("persistence-address", message, ar -> {
+
+          if (ar.succeeded()) {
+            routingContext.response()
+              .setStatusCode(204)
+              .setStatusMessage("Item created successfull.")
+              .end();
+          } else {
+            routingContext.response()
+              .setStatusCode(401)
+              .setStatusMessage("You have not provided an authentication token, the one provided has expired, was revoked or is not authentic.")
+              .end();
+          }
+        });
       }
     });
   }
-
 }

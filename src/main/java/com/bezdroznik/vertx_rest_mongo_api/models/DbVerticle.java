@@ -55,7 +55,7 @@ public class DbVerticle extends AbstractVerticle {
       .put("login", user.getString("login"))
       .put("password", hashedPassword);
 
-    saveInDb(new JsonObject().put("user", userToRegister));
+    saveInDb(userToRegister);
     message.reply("Registering successfull.");
 
   }
@@ -77,60 +77,30 @@ public class DbVerticle extends AbstractVerticle {
   }
 
   void addItem(Message<JsonObject> message) {
-    JsonObject idMessage = new JsonObject()
-      .put("action", "get-id")
-      .put("token", message.body().getString("token"));
-
-    vertx.eventBus().request("token-address", idMessage, ar -> {
-      if (ar.succeeded() && !ar.result().body().toString().equals("token not found or expired")) {
-        JsonObject item = new JsonObject()
-          .put("_id", message.body().getJsonObject("item").getString("_id"))
-          .put("name", message.body().getJsonObject("item").getString("name"))
-          .put("owner", ar.result().body().toString());
-        saveInDb(new JsonObject().put("item", item));
+        saveInDb(message.body().getJsonObject("item"));
         message.reply("register user ended");
-      } else {
-        System.out.println("token not found or expired");
-      }
-    });
-
-
   }
 
   void getItems(Message<JsonObject> message) {
-    JsonObject idMessage = new JsonObject()
-      .put("action", "get-id")
-      .put("token", message.body().getString("token"));
 
-    vertx.eventBus().request("token-address", idMessage, ar -> {
-      if (ar.succeeded() && !ar.result().body().toString().equals("token not found or expired")) {
+    JsonObject query = new JsonObject().put("owner", message.body().getString("owner"));
 
-        JsonObject query = new JsonObject().put("owner", ar.result().body().toString());
+    mongoClient.find("items", query, res -> {
+      JsonArray jsonArray = new JsonArray();
+      res.result().forEach(jsonArray::add);
 
-        mongoClient.find("items", query, res -> {
-          JsonArray jsonArray = new JsonArray();
-          res.result().forEach(jsonArray::add);
-
-          if (res.succeeded()) {
-            message.reply(jsonArray);
-          }
-        });
-      } else {
-        System.out.println("token not found or expired");
+      if (res.succeeded()) {
+        message.reply(jsonArray);
       }
     });
-
   }
 
-  private void saveInDb(JsonObject jsonObject) {
+  private void saveInDb(JsonObject product) {
     String mongoTableName;
-    JsonObject product;
-    if (jsonObject.containsKey("user")) {
+    if (product.containsKey("login")) {
       mongoTableName = "users";
-      product = jsonObject.getJsonObject("user");
     } else {
       mongoTableName = "items";
-      product = jsonObject.getJsonObject("item");
     }
     mongoClient.save(mongoTableName, product, res -> {
       if (res.succeeded()) {
