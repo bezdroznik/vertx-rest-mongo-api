@@ -122,10 +122,15 @@ public class HttpVerticle extends AbstractVerticle {
 
     vertx.eventBus().request("persistence-address", message, ar -> {
 
-      if (ar.succeeded()) {
+      if (ar.result().body().toString().equals("Registering successfull.")) {
         routingContext.response()
           .setStatusCode(204)
-          .setStatusMessage("Registering successfull")
+          .setStatusMessage(ar.result().body().toString())
+          .end();
+      } else {
+        routingContext.response()
+          .setStatusCode(409)
+          .setStatusMessage(ar.result().body().toString())
           .end();
       }
     });

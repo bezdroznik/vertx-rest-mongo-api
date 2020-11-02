@@ -49,15 +49,22 @@ public class DbVerticle extends AbstractVerticle {
   void registerUser(Message<JsonObject> message) {
     JsonObject user = message.body().getJsonObject("user");
 
-    String hashedPassword = Encrypt.hashPassword(message.body().getJsonObject("user").getString("password"));
-    JsonObject userToRegister = new JsonObject()
-      .put("_id", user.getString("_id"))
-      .put("login", user.getString("login"))
-      .put("password", hashedPassword);
+    JsonObject query = new JsonObject().put("login", user.getString("login"));
+    mongoClient.findOne("users", query, null, res -> {
+      if (res.result() != null) {
+        message.reply("login not available");
+      } else {
 
-    saveInDb(userToRegister);
-    message.reply("Registering successfull.");
+        String hashedPassword = Encrypt.hashPassword(message.body().getJsonObject("user").getString("password"));
+        JsonObject userToRegister = new JsonObject()
+          .put("_id", user.getString("_id"))
+          .put("login", user.getString("login"))
+          .put("password", hashedPassword);
 
+        saveInDb(userToRegister);
+        message.reply("Registering successfull.");
+      }
+    });
   }
 
   private void login(Message<JsonObject> message) {
@@ -73,12 +80,11 @@ public class DbVerticle extends AbstractVerticle {
         message.reply(replyMessage);
       }
     });
-
   }
 
   void addItem(Message<JsonObject> message) {
-        saveInDb(message.body().getJsonObject("item"));
-        message.reply("register user ended");
+    saveInDb(message.body().getJsonObject("item"));
+    message.reply("register user ended");
   }
 
   void getItems(Message<JsonObject> message) {
@@ -102,7 +108,7 @@ public class DbVerticle extends AbstractVerticle {
     } else {
       mongoTableName = "items";
     }
-    mongoClient.save(mongoTableName, product, res -> {
+    mongoClient.insert(mongoTableName, product, res -> {
       if (res.succeeded()) {
         System.out.println("added " + product);
       } else {
@@ -110,5 +116,4 @@ public class DbVerticle extends AbstractVerticle {
       }
     });
   }
-
 }
